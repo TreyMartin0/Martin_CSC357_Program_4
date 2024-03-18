@@ -7,10 +7,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #define MIN_ARGS 2
 #define MAX_ARGS 3
 #define SERVER_ARG_IDX 1
+#define MAX_RESPONSE_SIZE 1024
 
 #define USAGE_STRING "usage: %s <server address> <port>\n"
 
@@ -23,24 +25,33 @@ void validate_arguments(int argc, char *argv[])
     }
 }
 
-void send_request(int fd)
-{
-    char *line = NULL;
-    size_t size;
-    ssize_t num;
+void read_from_server(int fd) {
+    char response[MAX_RESPONSE_SIZE];
+    ssize_t bytes_read;
 
-    while ((num = getline(&line, &size, stdin)) >= 0)
-    {
-        write(fd, line, num);
-
-        char buffer[100];
-        read(fd, buffer, sizeof(buffer));
-        printf("echo: %s", buffer);
-        memset(buffer, 0, sizeof(buffer));
+    while ((bytes_read = read(fd, response, sizeof(response))) > 0) {
+        write(1, response, bytes_read);
     }
 
+    if (bytes_read == -1) {
+        perror("read");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void send_request(int fd)
+{
+	char *line = NULL;
+    size_t len = 0;
+    ssize_t num_read;
+
+    while ((num_read = getline(&line, &len, stdin)) > 0) {
+    	  write(fd, line, num_read);
+    	  read_from_server(fd);
+    }
     free(line);
 }
+
 
 int connect_to_server(struct hostent *host_entry, int port)
 {
@@ -81,7 +92,7 @@ int main(int argc, char *argv[])
     int fd = connect_to_server(host_entry, port);
     if (fd != -1)
     {
-        send_request(fd);
+    	send_request(fd);
         close(fd);
     }
 
